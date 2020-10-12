@@ -5,7 +5,7 @@
  * Description: Locally host gravatars - for the privacy concious
  * Requires at least: 5.3
  * Requires PHP: 5.6
- * Version: 1.0
+ * Version: 1.0.1
  * Author: Ari Stathopoulos
  * Text Domain: local-gravatars
  *
@@ -24,22 +24,18 @@ add_filter(
 	 * @return string
 	 */
 	function( $avatar ) {
-		$urls = [];
+		preg_match_all( '/srcset=["\']?((?:.(?!["\']?\s+(?:\S+)=|\s*\/?[>"\']))+.)["\']?/', $avatar, $srcset );
+		if ( isset( $srcset[1] ) && isset( $srcset[1][0] ) ) {
+			$url             = explode( ' ', $srcset[1][0] )[0];
+			$local_gravatars = new LocalGravatars( $url );
+			$avatar          = str_replace( $url, $local_gravatars->get_gravatar(), $avatar );
+		}
 
 		preg_match_all( '/src=["\']?((?:.(?!["\']?\s+(?:\S+)=|\s*\/?[>"\']))+.)["\']?/', $avatar, $src );
-		preg_match_all( '/src=["\']?((?:.(?!["\']?\s+(?:\S+)=|\s*\/?[>"\']))+.)["\']?/', $avatar, $srcset );
-
 		if ( isset( $src[1] ) && isset( $src[1][0] ) ) {
-			$urls[] = explode( ' ', $src[1][0] )[0];
-		}
-		if ( isset( $srcset[1] ) && isset( $srcset[1][0] ) ) {
-			$urls[] = explode( ' ', $srcset[1][0] )[0];
-		}
-
-		foreach ( $urls as $url ) {
+			$url             = explode( ' ', $src[1][0] )[0];
 			$local_gravatars = new LocalGravatars( $url );
-
-			$avatar = str_replace( $url, $local_gravatars->get_gravatar(), $avatar );
+			$avatar          = str_replace( $url, $local_gravatars->get_gravatar(), $avatar );
 		}
 		return $avatar;
 	}
@@ -98,7 +94,40 @@ class LocalGravatars {
 	/**
 	 * Cleanup routine frequency.
 	 */
-	const CLEANUP_FREQUENCY = 'daily';
+	const CLEANUP_FREQUENCY = 'weekly';
+
+	/**
+	 * Maxiumum process seconds.
+	 *
+	 * @since 1.0
+	 */
+	const MAX_PROCESS_TIME = 5;
+
+	/**
+	 * Start tim of all processes.
+	 *
+	 * @static
+	 * 
+	 * @access private
+	 * 
+	 * @since 1.0.1
+	 *
+	 * @var int
+	 */
+	private static $start_time;
+
+	/**
+	 * Set to true if we want to stop processing.
+	 * 
+	 * @static
+	 * 
+	 * @access private
+	 * 
+	 * @since 1.0.1
+	 * 
+	 * @var bool
+	 */
+	private static $has_stopped = false;
 
 	/**
 	 * Constructor.
@@ -126,6 +155,11 @@ class LocalGravatars {
 	 */
 	public function get_gravatar() {
 
+		// Early exit if we don't want to process.
+		if ( ! $this->should_process() ) {
+			return $this->get_fallback_url();
+		}
+
 		// If the gravatars folder doesn't exist, create it.
 		if ( ! file_exists( $this->get_base_path() ) ) {
 			$this->get_filesystem()->mkdir( $this->get_base_path(), FS_CHMOD_DIR );
@@ -152,7 +186,7 @@ class LocalGravatars {
 				// Move temp file to final destination.
 				$success = $this->get_filesystem()->move( $tmp_path, $path, true );
 				if ( ! $success ) {
-					return $this->remote_url;
+					return $this->get_fallback_url();
 				}
 			}
 		}
@@ -207,7 +241,11 @@ class LocalGravatars {
 	public function schedule_cleanup() {
 		if ( ! is_multisite() || ( is_multisite() && is_main_site() ) ) {
 			if ( ! wp_next_scheduled( 'delete_gravatars_folder' ) && ! wp_installing() ) {
-				wp_schedule_event( time(), self::CLEANUP_FREQUENCY, 'delete_gravatars_folder' );
+				wp_schedule_event(
+					time(),
+					apply_filters( 'get_local_gravatars_cleanup_frequency', self::CLEANUP_FREQUENCY ),
+					'delete_gravatars_folder'
+				);
 			}
 		}
 	}
@@ -240,8 +278,65 @@ class LocalGravatars {
 			if ( ! function_exists( 'WP_Filesystem' ) ) {
 				require_once wp_normalize_path( ABSPATH . '/wp-admin/includes/file.php' );
 			}
-			WP_Filesystem();
+			\WP_Filesystem();
 		}
 		return $wp_filesystem;
+	}
+
+	/**
+	 * Should we process or not?
+	 * 
+	 * @access public
+	 * 
+	 * @since 1.0.1
+	 * 
+	 * @return bool
+	 */
+	public function should_process() {
+
+		// Early exit if we've already determined we want to stop.
+		if ( self::$has_stopped ) {
+			return false;
+		}
+
+		// Set the start time.
+		if ( ! self::$start_time ) {
+			self::$start_time = time();
+		}
+
+		// Return false if we've got over the max time limit.
+		if ( time() > self::$start_time + $this->get_max_process_time() ) {
+			self::$has_stopped = true;
+			return false;
+		}
+
+		// Falback to true.
+		return true;
+	}
+
+	/**
+	 * Get maximum process time in seconds.
+	 * 
+	 * @access public
+	 * 
+	 * @since 1.0.1
+	 * 
+	 * @return int
+	 */
+	public function get_max_process_time() {
+		return apply_filters( 'get_local_gravatars_max_process_time', self::MAX_PROCESS_TIME );
+	}
+
+	/**
+	 * Get fallback image
+	 * 
+	 * @access public
+	 * 
+	 * @since 1.0.1
+	 * 
+	 * @return string
+	 */
+	public function get_fallback_url() {
+		return apply_filters( 'get_local_gravatars_fallback_url', '', $this->remote_url );
 	}
 }
