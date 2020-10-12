@@ -25,4 +25,4 @@ The code is simple, easy to read, well-documented and includes filters you can u
 * Change the URL of downloaded gravatars.
 * Change the cleanup frequency.
 * Change the maximum process time to avoid performance issues.
-* Change the fallback image to use (defaults to blank)
+* Change the fallback image to use (defaults to blank) - also allows using the remote URL (not recommended as it will defeat the purpose of this privacy enhancement).
