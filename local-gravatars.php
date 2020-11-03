@@ -337,6 +337,6 @@ class LocalGravatars {
 	 * @return string
 	 */
 	public function get_fallback_url() {
-		return apply_filters( 'get_local_gravatars_fallback_url', '', $this->remote_url );
+		return apply_filters( 'get_local_gravatars_fallback_url', $this->remote_url );
 	}
 }
