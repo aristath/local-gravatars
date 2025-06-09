@@ -5,7 +5,7 @@
  * Description: Locally host gravatars - for the privacy concious
  * Requires at least: 5.3
  * Requires PHP: 5.6
- * Version: 1.0.1
+ * Version: 1.1.0
  * Author: Ari Stathopoulos
  * Text Domain: local-gravatars
  *
@@ -14,6 +14,38 @@
  */
 
 namespace Aristath\LocalGravatars;
+
+// If the FAIR plugin is active and the `FAIR\Avatars\bootstrap` function exists,
+// add an admin notice to the dashboard.
+if ( function_exists( 'FAIR\Avatars\bootstrap' ) ) {
+	add_action( 'admin_notices', function() {
+		$plugin_file    = basename( __DIR__ ) . '/' . basename( __FILE__ );
+		$deactivate_url = \wp_nonce_url(
+			\add_query_arg(
+				[
+					'action' => 'deactivate',
+					'plugin' => $plugin_file,
+					'plugin_status' => 'all',
+					'paged' => 1,
+					's' => '',
+				],
+				\self_admin_url( 'plugins.php' )
+			),
+			'deactivate-plugin_' . $plugin_file
+		);
+		?>
+		<div class="notice notice-warning">
+			<p>
+				<?php \esc_html_e( 'The FAIR plugin is active. Local Gravatars is not needed, you can deactivate it by clicking the button below.', 'local-gravatars' ); ?>
+			</p>
+			<p>
+				<a href="<?php echo esc_url( $deactivate_url ); ?>" class="button button-small"><?php \esc_html_e( 'Deactivate the "Local Gravatars" plugin', 'local-gravatars' ); ?></a>
+			</p>
+		</div>
+		<?php
+	} );
+	return;
+}
 
 add_filter(
 	'get_avatar',
